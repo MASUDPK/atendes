@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Construction Labor Attendance & Time Tracking | হাজিরা খাতা</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Google Font: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- SheetJS for multi-sheet Excel (.xlsx) export -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <div id="app-container">
+    <!-- Top Header & Project Selector (Hidden on Print) -->
+    <header class="app-header no-print">
+      <div class="header-top">
+        <div class="brand-badge">
+          <span class="brand-icon">🏗️</span>
+          <div class="brand-info">
+            <h1 class="brand-title">Construction Labor Attendance & Time Tracking</h1>
+            <span class="brand-subtitle">Multi-Project হাজিরা খাতা • Site Management</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="btn-quick-search" class="icon-btn" title="Search Employee or Contractor" aria-label="Search">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          </button>
+          <button id="btn-add-project-top" class="btn-primary-sm" title="Add New Project" onclick="App.openModal('modal-add-project')">
+            <span class="btn-plus">+</span> Project
+          </button>
+        </div>
+      </div>
+
+      <!-- Current Project Selector Bar -->
+      <div class="project-selector-bar">
+        <div class="project-selector-label">
+          <span class="pulse-dot"></span>
+          <span>Project:</span>
+        </div>
+        <div class="project-dropdown-wrapper">
+          <select id="project-select" class="project-dropdown" aria-label="Select Project">
+            <!-- Dynamic Projects populated via JS -->
+          </select>
+        </div>
+        <button id="btn-delete-project-top" class="icon-btn-danger" title="Delete Project" aria-label="Delete Project" onclick="App.showDeleteProjectModal()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+        </button>
+      </div>
+
+      <!-- Quick Search Overlay Bar -->
+      <div id="search-bar-container" class="search-bar-container hidden">
+        <div class="search-input-wrapper">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" id="global-search-input" placeholder="Search employee or contractor (e.g. Rahim, Abdul)..." />
+          <button id="btn-close-search" class="icon-btn-xs" aria-label="Close search">✕</button>
+        </div>
+        <div id="search-results-box" class="search-results-box hidden"></div>
+      </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main id="main-content" class="main-content">
+      <!-- 1. DASHBOARD VIEW -->
+      <section id="view-dashboard" class="view-section active">
+        <!-- Project Title Hero -->
+        <div class="project-hero-card">
+          <div class="hero-header">
+            <div>
+              <span class="hero-tag">Active Construction Project</span>
+              <h2 id="dash-project-name" class="hero-project-title">Jamila Bhavan-1</h2>
+            </div>
+            <div class="hero-date-badge">
+              <span id="dash-today-date" class="date-text">19 Sep 2026</span>
+              <span class="day-text">Today</span>
+            </div>
+          </div>
+          <div class="hero-week-banner">
+            <span class="week-icon">📅</span>
+            <div class="week-info">
+              <span class="week-label">Current Weekly Cycle (Fri → Thu):</span>
+              <strong id="dash-current-week-range" class="week-dates">Fri, 18 Sep → Thu, 24 Sep 2026</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dashboard Stat Cards (Grid of 6) -->
+        <div class="stat-grid-3x2">
+          <div class="stat-card stat-total-labor" onclick="App.navigateTo('employees')">
+            <div class="stat-icon-wrapper">👷</div>
+            <div class="stat-body">
+              <span class="stat-label">Total Employees</span>
+              <span id="stat-total-labor" class="stat-value">0</span>
+              <span class="stat-sub">Active workers ➔</span>
+            </div>
+          </div>
+
+          <div class="stat-card stat-present">
+            <div class="stat-icon-wrapper">✓</div>
+            <div class="stat-body">
+              <span class="stat-label">Present Today</span>
+              <span id="stat-present-today" class="stat-value text-green">0</span>
+              <span class="stat-sub">On site</span>
+            </div>
+          </div>
+
+          <div class="stat-card stat-absent">
+            <div class="stat-icon-wrapper">A</div>
+            <div class="stat-body">
+              <span class="stat-label">Absent Today</span>
+              <span id="stat-absent-today" class="stat-value text-rose">0</span>
+              <span class="stat-sub">Not on site</span>
+            </div>
+          </div>
+
+          <!-- Currently Working Card (Tap to view who is working) -->
+          <div class="stat-card stat-currently-working" onclick="App.showCurrentlyWorkingModal()" title="Tap to see currently working employees">
+            <div class="stat-icon-wrapper">⏱️</div>
+            <div class="stat-body">
+              <div class="stat-label-with-badge">
+                <span class="stat-label">Currently Working</span>
+                <span class="pulse-dot-sm"></span>
+              </div>
+              <span id="stat-currently-working" class="stat-value text-sky">0</span>
+              <span class="stat-sub">Time In active (no Time Out) 🔍</span>
+            </div>
+          </div>
+
+          <div class="stat-card stat-today-days">
+            <div class="stat-icon-wrapper">🗓️</div>
+            <div class="stat-body">
+              <span class="stat-label">Today's Person-Days</span>
+              <span id="stat-today-person-days" class="stat-value text-indigo">0</span>
+              <span class="stat-sub">1 person present = 1 day</span>
+            </div>
+          </div>
+
+          <div class="stat-card stat-person-days" onclick="App.navigateTo('weekly')">
+            <div class="stat-icon-wrapper">📊</div>
+            <div class="stat-body">
+              <span class="stat-label">Weekly Person-Days</span>
+              <span id="stat-weekly-person-days" class="stat-value text-amber">0</span>
+              <span class="stat-sub">Fri → Thu cycle ➔</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Today's Time Summary Section -->
+        <div class="today-time-summary-card">
+          <div class="summary-card-header">
+            <span class="summary-card-icon">⚡</span>
+            <div>
+              <h3 class="summary-card-title">Today's Time Summary</h3>
+              <span class="summary-card-sub" id="today-summary-date">Real-time site hours</span>
+            </div>
+          </div>
+          <div class="summary-card-grid">
+            <div class="summary-metric">
+              <span class="metric-num text-green" id="today-sum-present">0</span>
+              <span class="metric-text">Total Present</span>
+            </div>
+            <div class="summary-metric">
+              <span class="metric-num text-rose" id="today-sum-absent">0</span>
+              <span class="metric-text">Total Absent</span>
+            </div>
+            <div class="summary-metric clickable-metric" onclick="App.showCurrentlyWorkingModal()">
+              <span class="metric-num text-sky" id="today-sum-working">0</span>
+              <span class="metric-text">Currently Working 🔍</span>
+            </div>
+            <div class="summary-metric">
+              <span class="metric-num text-slate" id="today-sum-completed">0</span>
+              <span class="metric-text">Completed Time Out</span>
+            </div>
+          </div>
+          <div class="summary-total-hours-strip">
+            <span class="strip-label">Total Working Time Today:</span>
+            <strong id="today-sum-total-hours" class="strip-val">0h 00m</strong>
+          </div>
+        </div>
+
+        <!-- Primary Action Buttons -->
+        <div class="dash-actions-section">
+          <h3 class="section-heading">Project Actions & Navigation</h3>
+          <button class="btn-action-hero" onclick="App.navigateTo('attendance')">
+            <span class="action-icon">📝</span>
+            <div class="action-text">
+              <strong>Mark Attendance & Time In/Out</strong>
+              <span>Daily presence, Time In, Time Out & working hours</span>
+            </div>
+            <span class="action-arrow">→</span>
+          </button>
+
+          <div class="action-grid-buttons">
+            <button class="dash-btn" onclick="App.navigateTo('contractors')">
+              <span class="dash-btn-icon">🏗️</span>
+              <strong>Contractors / Groups</strong>
+              <span id="dash-contractor-count">0 Groups</span>
+            </button>
+
+            <button class="dash-btn" onclick="App.navigateTo('employees')">
+              <span class="dash-btn-icon">👥</span>
+              <strong>Employees</strong>
+              <span id="dash-labor-count">0 Workers</span>
+            </button>
+
+            <button class="dash-btn" onclick="App.navigateTo('weekly')">
+              <span class="dash-btn-icon">📈</span>
+              <strong>Weekly Report</strong>
+              <span>Fri → Thu Report</span>
+            </button>
+
+            <button class="dash-btn" onclick="App.navigateTo('monthly')">
+              <span class="dash-btn-icon">📋</span>
+              <strong>Monthly Report</strong>
+              <span>Detailed Attendance</span>
+            </button>
+
+            <button class="dash-btn" onclick="App.navigateTo('contractor-report')">
+              <span class="dash-btn-icon">👷</span>
+              <strong>Contractor Report</strong>
+              <span>Trade & Person-Days</span>
+            </button>
+
+            <button class="dash-btn" onclick="App.navigateTo('history')">
+              <span class="dash-btn-icon">📁</span>
+              <strong>History</strong>
+              <span>Closed Months</span>
+            </button>
+          </div>
+
+          <!-- Secondary Toolbar: Excel Export, Google Sheets & Project Management -->
+          <div class="dash-footer-toolbar">
+            <button class="btn-tool btn-tool-excel" onclick="App.showExcelExportModal()">
+              <span>📊 Export Excel</span>
+            </button>
+            <button class="btn-tool btn-tool-sheets" onclick="App.openGoogleSheetsModal()">
+              <span>📈 Google Sheets</span>
+            </button>
+            <button class="btn-tool btn-tool-new" onclick="App.openModal('modal-add-project')">
+              <span>+ New Project</span>
+            </button>
+            <button class="btn-tool btn-tool-delete" onclick="App.showDeleteProjectModal()">
+              <span>🗑️ Delete Project</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Month Closing Card -->
+        <div class="month-close-card">
+          <div class="close-card-info">
+            <span class="badge-active-month">Active Month</span>
+            <h4 id="dash-month-name">September 2026</h4>
+            <p>At month end, close to archive daily attendance, Time In/Out, working hours, and reports to permanent History and start a fresh month.</p>
+          </div>
+          <button id="btn-dash-close-month" class="btn-warning-outline" onclick="App.showCloseMonthModal()">
+            Archive & Close Month
+          </button>
+        </div>
+      </section>
+
+      <!-- 2. DAILY ATTENDANCE & TIME IN / TIME OUT VIEW -->
+      <section id="view-attendance" class="view-section">
+        <div class="view-header no-print">
+          <button class="btn-back" onclick="App.navigateTo('dashboard')">← Dashboard</button>
+          <h2 class="view-title">Daily Attendance</h2>
+          <span class="view-project-badge" id="att-project-badge">Jamila Bhavan-1</span>
+        </div>
+
+        <!-- Selection Card: Date & Contractor -->
+        <div class="filter-card no-print">
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="att-date-input">Attendance Date:</label>
+              <input type="date" id="att-date-input" class="form-control" onchange="App.handleAttendanceDateOrContractorChange()" />
+            </div>
+            <div class="form-group flex-1">
+              <label for="att-contractor-select">Contractor / Group:</label>
+              <select id="att-contractor-select" class="form-control" onchange="App.handleAttendanceDateOrContractorChange()">
+                <!-- Contractor options populated via JS -->
+              </select>
+            </div>
+          </div>
+
+          <div class="contractor-work-info-strip" id="att-contractor-info">
+            <span class="info-label">Work Type:</span>
+            <strong id="att-contractor-worktype">Mason + Helper</strong>
+            <span class="info-badge" id="att-labor-count-badge">0 workers</span>
+          </div>
+        </div>
+
+        <!-- Attendance Marking Table / Card List -->
+        <div class="attendance-table-container">
+          <div class="table-header-controls no-print">
+            <div class="header-left">
+              <h3 class="table-title">Workers List</h3>
+              <span class="table-sub" id="att-summary-counts">Present: 0 | Absent: 0</span>
+            </div>
+            <div class="batch-buttons">
+              <button type="button" class="btn-tag-green" onclick="App.markAllAttendance('present')" title="Mark all workers present (times remain editable)">Mark All Present</button>
+              <button type="button" class="btn-tag-rose" onclick="App.markAllAttendance('absent')" title="Mark all workers absent">Mark All Absent</button>
+            </div>
+          </div>
+
+          <div id="attendance-list-wrapper" class="attendance-cards-list">
+            <!-- Dynamic worker attendance rows inserted here -->
+          </div>
+
+          <!-- Bottom Save Button Bar -->
+          <div class="save-bar-sticky no-print">
+            <button id="btn-save-attendance" class="btn-primary-lg" onclick="App.saveCurrentAttendance()">
+              <span class="btn-icon">💾</span> SAVE ATTENDANCE
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. CONTRACTORS / GROUPS VIEW -->
+      <section id="view-contractors" class="view-section">
+        <div class="view-header no-print">
+          <button class="btn-back" onclick="App.navigateTo('dashboard')">← Dashboard</button>
+          <h2 class="view-title">Contractors / Groups</h2>
+          <button class="btn-primary-sm" onclick="App.showAddContractorModal()">+ Add Contractor</button>
+        </div>
+
+        <div class="helper-callout no-print">
+          <span>ℹ️ Each contractor manages their own workers for a specific trade in this project.</span>
+        </div>
+
+        <div id="contractors-list-grid" class="contractors-grid">
+          <!-- Dynamic Contractor Cards -->
+        </div>
+      </section>
+
+      <!-- 4. EMPLOYEES / WORKERS VIEW -->
+      <section id="view-employees" class="view-section">
+        <div class="view-header no-print">
+          <button class="btn-back" onclick="App.navigateTo('dashboard')">← Dashboard</button>
+          <h2 class="view-title">Employees / Workers</h2>
+          <button class="btn-primary-sm" onclick="App.showAddEmployeeModal()">+ Add Employee</button>
+        </div>
+
+        <div class="labor-filter-bar no-print">
+          <input type="text" id="employee-search-filter" class="form-control" placeholder="Search employee name..." oninput="App.renderEmployeesList()" />
+          <select id="employee-contractor-filter" class="form-control" onchange="App.renderEmployeesList()">
+            <option value="ALL">All Contractors</option>
+          </select>
+        </div>
+
+        <div id="employees-members-list" class="labor-cards-list">
+          <!-- Dynamic Employee Cards -->
+        </div>
+      </section>
+
+      <!-- 5. WEEKLY REPORT VIEW (FRIDAY -> THURSDAY) -->
+      <section id="view-weekly" class="view-section">
+        <div class="view-header no-print">
+          <button class="btn-back" onclick="App.navigateTo('dashboard')">← Dashboard</button>
+          <h2 class="view-title">Weekly Report</h2>
+          <div class="header-action-group">
+            <button class="btn-ghost-sm" onclick="App.printReport('view-weekly')">🖨️ Print A4</button>
+            <button class="btn-ghost-sm" onclick="App.exportExcelForType('week')">📊 Excel</button>
+          </div>
+        </div>
+
+        <!-- Printable Report Header (Visible on print) -->
+        <div class="print-report-header">
+          <h1 class="print-title">Weekly Labor Attendance & Time Report</h1>
+          <div class="print-meta-grid">
+            <div><strong>Project:</strong> <span id="print-weekly-project-name">Jamila Bhavan-1</span></div>
+            <div><strong>Weekly Cycle:</strong> <span id="print-weekly-cycle">Fri → Thu</span></div>
+            <div><strong>Generated:</strong> <span id="print-weekly-generated">Today</span></div>
+            <div><strong>Classification:</strong> Attendance & Time Tracking (No Wages)</div>
+          </div>
+        </div>
+
+        <!-- Friday Week Selector Card -->
+        <div class="week-selector-card no-print">
+          <div class="week-input-group">
+            <label for="week-start-date-input">
+              <strong>Select Week Start Date (Must be a Friday):</strong>
+            </label>
+            <div class="date-input-with-button">
+              <input type="date" id="week-start-date-input" class="form-control" />
+              <button class="btn-secondary" onclick="App.handleWeekDateChange()">Apply Week</button>
+            </div>
+            <p id="week-validation-msg" class="validation-msg hidden">
+              ⚠️ Please select a Friday as the Week Start Date.
+            </p>
+          </div>
+
+          <div class="current-calculated-week-strip" id="calculated-week-strip">
+            <span class="strip-icon">🗓️</span>
+            <div>
+              <span class="strip-label">Calculated Weekly Range:</span>
+              <strong id="weekly-range-display" class="strip-value">18 Sep 2026 → 24 Sep 2026</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary Strip: Total Employees, Present Person-Days, Absent Days, Total Working Hours -->
+        <div class="weekly-summary-stats-banner">
+          <div class="wstat-box">
+            <span class="wstat-label">Total Employees</span>
+            <strong id="weekly-sum-total-emp" class="wstat-val">0</strong>
+          </div>
+          <div class="wstat-box text-green">
+            <span class="wstat-label">Present Person-Days</span>
+            <strong id="weekly-sum-present-days" class="wstat-val">0</strong>
+          </div>
+          <div class="wstat-box text-rose">
+            <span class="wstat-label">Absent Days</span>
+            <strong id="weekly-sum-absent-days" class="wstat-val">0</strong>
+          </div>
+          <div class="wstat-box text-sky">
+            <span class="wstat-label">Total Working Hours</span>
+            <strong id="weekly-sum-total-hours" class="wstat-val">0h 00m</strong>
+          </div>
+        </div>
+
+        <!-- Weekly Detailed Table (Date | Day | Contractor | Employee | Type | Status | Time In | Time Out | Working) -->
+        <div class="report-table-card">
+          <div class="card-header-flex">
+            <div>
+              <h3 class="card-heading">Detailed Weekly Attendance & Time Records</h3>
+              <span class="card-subheading">Complete worker-by-worker daily logs for Friday → Thursday</span>
+            </div>
+            <span class="badge-tag-blue no-print">Daily Log</span>
+          </div>
+
+          <div class="table-responsive">
+            <table class="report-data-table" id="weekly-detailed-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Day</th>
+                  <th>Contractor</th>
+                  <th>Employee</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Time In</th>
+                  <th>Time Out</th>
+                  <th>Working</th>
+                </tr>
+              </thead>
+              <tbody id="weekly-detailed-tbody">
+                <!-- Dynamically generated rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Weekly Contractor Breakdown Cards -->
+        <div id="weekly-contractor-cards-container" class="weekly-cards-container">
+          <!-- Dynamic Contractor Weekly Cards -->
+        </div>
+
+        <!-- Weekly Time Summary Card -->
+        <div class="weekly-time-summary-card">
+          <div class="card-header-flex">
+            <div>
+              <h3 class="card-heading">Weekly Time Summary by Trade</h3>
+              <span class="card-subheading">Total and average working hours for this week</span>
+            </div>
+            <span class="badge-tag-blue no-print">Time Tracking</span>
+          </div>
+
+          <div class="time-summary-table-wrap">
+            <table class="time-summary-table">
+              <thead>
+                <tr>
+                  <th>Trade Category</th>
+                  <th>Total Working Time</th>
+                </tr>
+              </thead>
+              <tbody id="weekly-time-summary-tbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="avg-time-highlight">
+            <div class="avg-icon">⏱️</div>
+            <div class="avg-info">
+              <span class="avg-label">Average Working Time per Present Person-Day:</span>
+              <strong id="weekly-avg-time-display" class="avg-val">0 hours 00 minutes</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. MONTHLY REPORT VIEW -->
+      <section id="view-monthly" class="view-section">
+        <div class="view-header no-print">
+          <button class="btn-back" onclick="App.navigateTo('dashboard')">← Dashboard</button>
+          <h2 class="view-title">Monthly Report</h2>
+          <div class="header-action-group">
+            <button class="btn-ghost-sm" onclick="App.printReport('view-monthly')">🖨️ Print A4</button>
+            <button class="btn-ghost-sm" onclick="App.exportExcelForType('month')">📊 Excel</button>
+          </div>
+        </div>
+
+        <!-- Printable Report Header (Visible on print) -->
+        <div class="print-report-header">
+          <h1 class="print-title">Monthly Labor Attendance & Time Report</h1>
+          <div class="print-meta-grid">
+            <div><strong>Project:</strong> <span id="print-monthly-project-name">Jamila Bhavan-1</span></div>
+            <div><strong>Month:</strong> <span id="print-monthly-name">September 2026</span></div>
+            <div><strong>Generated:</strong> <span id="print-monthly-generated">Today</span></div>
+            <div><strong>Classification:</strong> Attendance & Time Tracking (No Wages)</div>
+          </div>
+        </div>
+
+        <!-- Monthly Summary Banner -->
+        <div class="weekly-summary-stats-banner">
+          <div class="wstat-box text-green">
+            <span class="wstat-label">Total Present</span>
+            <strong id="monthly-sum-present" class="wstat-val">0</strong>
+          </div>
+          <div class="wstat-box text-rose">
+            <span class="wstat-label">Total Absent</span>
+            <strong id="monthly-sum-absent" class="wstat-val">0</strong>
+          </div>
+          <div class="wstat-box text-amber">
+            <span class="wstat-label">Total Person-Days</span>
+            <strong id="monthly-sum-persondays" class="wstat-val">0</strong>
+          </div>
+          <div class="wstat-box text-sky">
+            <span class="wstat-label">Total Working Hours</span>
+            <strong id="monthly-sum-hours" class="wstat-val">0h 00m</strong>
+          </div>
+        </div>
+
+        <!-- Monthly Detailed Daily Records Table -->
+        <div class="report-table-card">
+          <div class="card-header-flex">
+            <div>
+              <h3 class="card-heading">Detailed Daily Attendance (Who Worked On Which Days)</h3>
+              <span class="card-subheading">Full breakdown of all employee shifts for the active month</span>
+            </div>
+            <span class="badge-tag-indigo no-print" id="monthly-badge-label">September 2026</span>
+          </div>
+
+          <div class="table-responsive">
+            <table class="report-data-table" id="monthly-detailed-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Day</th>
+                  <th>Contractor</th>
+                  <th>Employee</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Time In</th>
+                  <th>Time Out</th>
+                  <th>Working</th>
+                </tr>
+              </thead>
+              <tbody id="monthly-detailed-tbody">
+                <!-- Dynamically generated rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7. CONTRACTOR-WISE REPORT VIEW -->
+      <section id="view-contractor-report" class="view-section">
+        <div class="view-header no-print">
+          <button class="btn-back" onclick="App.navigateTo('dashboard')">← Dashboard</button>
+          <h2 class="view-title">Contractor-wise Report</h2>
+          <div class="header-action-group">
+            <button class="btn-ghost-sm" onclick="App.printReport('view-contractor-report')">🖨️ Print A4</button>
+            <button class="btn-ghost-sm" onclick="App.exportExcelForType('contractor')">📊 Excel</button>
+          </div>
+        </div>
+
+        <!-- Printable Report Header (Visible on print) -->
+        <div class="print-report-header">
+          <h1 class="print-title">Contractor-wise Attendance & Time Report</h1>
+          <div class="print-meta-grid">
+            <div><strong>Project:</strong> <span id="print-contractor-project-name">Jamila Bhavan-1</span></div>
+            <div><strong>Report Type:</strong> Contractor Trade & Daily Shifts</div>
+            <div><strong>Generated:</strong> <span id="print-contractor-generated">Today</span></div>
+          </div>
+        </div>
+
+        <!-- Contractor Filter Dropdown -->
+        <div class="filter-card no-print">
+          <div class="form-group">
+            <label for="contractor-report-select">Select Contractor / Group:</label>
+            <select id="contractor-report-select" class="form-control" onchange="App.renderContractorWiseReport()">
+              <!-- Populated via JS -->
+            </select>
+          </div>
+        </div>
+
+        <!-- Dynamic Contractor Summary & Daily Records -->
+        <div id="contractor-report-content">
+          <!-- Dynamic Content -->
+        </div>
+      </section>
+
+      <!-- 8. CONTRACTOR WEEKLY TIME DETAIL VIEW -->
+      <section id="view-contractor-detail" class="view-section">
+        <div class="view-header no-print">
+          <button class="btn-back" onclick="App.navigateTo('weekly')">← Weekly Result</button>
+          <h2 class="view-title" id="cd-title">Contractor Weekly Time Detail</h2>
+        </div>
+
+        <div class="contractor-detail-hero" id="cd-hero">
+          <!-- Dynamic Content -->
+        </div>
+
+        <h3 class="section-subheading">Assigned Workers, Attendance & Working Time</h3>
+        <div id="cd-workers-list" class="cd-workers-container">
+          <!-- Dynamic Worker Rows with days count & total working time -->
+        </div>
+      </section>
+
+      <!-- 9. INDIVIDUAL EMPLOYEE PROFILE VIEW -->
+      <section id="view-labor-profile" class="view-section">
+        <div class="view-header no-print">
+          <button class="btn-back" onclick="App.navigateBackFromProfile()">← Back</button>
+          <h2 class="view-title">Individual Employee Profile</h2>
+          <button class="btn-ghost-sm" onclick="App.printReport('view-labor-profile')">🖨️ Print A4</button>
+        </div>
+
+        <!-- Print Header -->
+        <div class="print-report-header">
+          <h1 class="print-title">Employee Attendance & Time History</h1>
+          <div class="print-meta-grid">
+            <div><strong>Project:</strong> <span id="print-profile-project">Jamila Bhavan-1</span></div>
+            <div><strong>Employee:</strong> <span id="print-profile-worker">Rahim</span></div>
+            <div><strong>Generated:</strong> <span id="print-profile-generated">Today</span></div>
+          </div>
+        </div>
+
+        <div class="profile-hero-card" id="lp-hero">
+          <!-- Dynamic Employee Profile Hero -->
+        </div>
+
+        <!-- Current Week Breakdown Card with Time In / Out / Working Table -->
+        <div class="profile-card">
+          <div class="card-header-flex">
+            <h3 class="card-heading">Current Week (Fri → Thu)</h3>
+            <span class="badge-week" id="lp-week-range">18 Sep → 24 Sep</span>
+          </div>
+
+          <div class="profile-table-scroll">
+            <table class="profile-week-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Day</th>
+                  <th>Status</th>
+                  <th>Time In</th>
+                  <th>Time Out</th>
+                  <th>Working</th>
+                </tr>
+              </thead>
+              <tbody id="lp-week-table-body">
+                <!-- Dynamic Rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="profile-summary-tally">
+            <div class="tally-item">
+              <span>Present:</span>
+              <strong id="lp-week-present" class="text-green">0 days</strong>
+            </div>
+            <div class="tally-item">
+              <span>Absent:</span>
+              <strong id="lp-week-absent" class="text-rose">0 days</strong>
+            </div>
+            <div class="tally-item">
+              <span>Person-Days:</span>
+              <strong id="lp-week-persondays" class="text-amber">0</strong>
+            </div>
+            <div class="tally-item">
+              <span>Total Working Time:</span>
+              <strong id="lp-week-total-working" class="text-sky">0h 00m</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Current Month Attendance Card -->
+        <div class="profile-card">
+          <div class="card-header-flex">
+            <h3 class="card-heading">Current Month Attendance</h3>
+            <span class="badge-tag-indigo" id="lp-month-name-badge">September 2026</span>
+          </div>
+
+          <div class="profile-month-grid">
+            <div class="month-stat-box green">
+              <span class="label">Present Days</span>
+              <strong id="lp-month-present">0 days</strong>
+            </div>
+            <div class="month-stat-box rose">
+              <span class="label">Absent Days</span>
+              <strong id="lp-month-absent">0 days</strong>
+            </div>
+            <div class="month-stat-box amber">
+              <span class="label">Person-Days</span>
+              <strong id="lp-month-persondays">0</strong>
+            </div>
+            <div class="month-stat-box sky">
+              <span class="label">Total Working Hours</span>
+              <strong id="lp-month-total-hours">0h 00m</strong>
+            </div>
+          </div>
+
+          <h4 class="sub-table-heading">Complete Daily Records</h4>
+          <div class="profile-table-scroll">
+            <table class="profile-week-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Day</th>
+                  <th>Status</th>
+                  <th>Time In</th>
+                  <th>Time Out</th>
+                  <th>Working</th>
+                </tr>
+              </thead>
+              <tbody id="lp-month-table-body">
+                <!-- Dynamic Rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 10. MONTHLY HISTORY VIEW -->
+      <section id="view-history" class="view-section">
+        <div class="view-header no-print">
+          <button class="btn-back" onclick="App.navigateTo('dashboard')">← Dashboard</button>
+          <h2 class="view-title">History</h2>
+          <span class="view-project-badge" id="history-project-badge">Jamila Bhavan-1</span>
+        </div>
+
+        <div class="helper-callout no-print">
+          <span>📁 Project-specific history of closed months. Tap any closed month to inspect attendance, times, and weekly results. Old history is never deleted.</span>
+        </div>
+
+        <div id="history-months-list" class="history-list-container">
+          <!-- Dynamic Closed Months Cards -->
+        </div>
+      </section>
+
+      <!-- 11. HISTORY MONTH DETAIL VIEW -->
+      <section id="view-history-detail" class="view-section">
+        <div class="view-header no-print">
+          <button class="btn-back" onclick="App.navigateTo('history')">← History</button>
+          <h2 class="view-title" id="hd-title">History: September 2026</h2>
+          <button class="btn-ghost-sm" onclick="App.printReport('view-history-detail')">🖨️ Print A4</button>
+        </div>
+
+        <!-- History Detail Tabs -->
+        <div class="history-detail-tabs no-print">
+          <button class="hd-tab active" data-tab="hd-tab-weekly" onclick="App.switchHistoryTab('hd-tab-weekly')">Weekly Results</button>
+          <button class="hd-tab" data-tab="hd-tab-daily" onclick="App.switchHistoryTab('hd-tab-daily')">Daily Records</button>
+          <button class="hd-tab" data-tab="hd-tab-labor" onclick="App.switchHistoryTab('hd-tab-labor')">Employee Attendance</button>
+          <button class="hd-tab" data-tab="hd-tab-totals" onclick="App.switchHistoryTab('hd-tab-totals')">Monthly Totals</button>
+        </div>
+
+        <div id="hd-tab-weekly" class="hd-tab-content active">
+          <div id="hd-weekly-container"></div>
+        </div>
+
+        <div id="hd-tab-daily" class="hd-tab-content">
+          <div id="hd-daily-container"></div>
+        </div>
+
+        <div id="hd-tab-labor" class="hd-tab-content">
+          <div id="hd-labor-container"></div>
+        </div>
+
+        <div id="hd-tab-totals" class="hd-tab-content">
+          <div id="hd-totals-container"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Navigation Bar (Mobile Friendly, Hidden on Print) -->
+    <nav class="bottom-nav no-print">
+      <button class="nav-item active" data-view="dashboard" onclick="App.navigateTo('dashboard')">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Home</span>
+      </button>
+      <button class="nav-item" data-view="attendance" onclick="App.navigateTo('attendance')">
+        <span class="nav-icon">📝</span>
+        <span class="nav-label">Attendance</span>
+      </button>
+      <button class="nav-item" data-view="contractors" onclick="App.navigateTo('contractors')">
+        <span class="nav-icon">🏗️</span>
+        <span class="nav-label">Contractors</span>
+      </button>
+      <button class="nav-item" data-view="employees" onclick="App.navigateTo('employees')">
+        <span class="nav-icon">👥</span>
+        <span class="nav-label">Employees</span>
+      </button>
+      <button class="nav-item" data-view="weekly" onclick="App.navigateTo('weekly')">
+        <span class="nav-icon">📈</span>
+        <span class="nav-label">Weekly</span>
+      </button>
+      <button class="nav-item" data-view="monthly" onclick="App.navigateTo('monthly')">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label">Monthly</span>
+      </button>
+      <button class="nav-item" data-view="history" onclick="App.navigateTo('history')">
+        <span class="nav-icon">📁</span>
+        <span class="nav-label">History</span>
+      </button>
+    </nav>
+
+    <!-- Toast Notification Banner -->
+    <div id="toast" class="toast hidden">Saved Successfully</div>
+
+    <!-- ==================== MODALS ==================== -->
+
+    <!-- Modal 1: Add New Project -->
+    <div id="modal-add-project" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3>+ Add New Project</h3>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-add-project')">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="new-project-name">Project Name *</label>
+            <input type="text" id="new-project-name" class="form-control" placeholder="e.g. Choto Building, Tin Shed Building, Project-04..." />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="App.closeModal('modal-add-project')">Cancel</button>
+          <button class="btn-primary" onclick="App.createNewProject()">Create Project</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 2: Delete Project Confirmation -->
+    <div id="modal-delete-project" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="text-danger">Delete Construction Project</h3>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-delete-project')">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="warning-callout">
+            <strong>⚠️ Warning: Irreversible Project Deletion</strong>
+          </div>
+          <p class="modal-desc">
+            Are you sure you want to permanently delete project <strong id="delete-project-label">Project</strong>?
+          </p>
+          <p class="modal-sub text-danger font-bold">
+            All contractors, employees, attendance records, time logs, and historical closed months for this project will be permanently deleted!
+          </p>
+          <ul class="modal-check-list">
+            <li>• Project and worker data cannot be recovered.</li>
+            <li>• Other projects will remain completely untouched.</li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="App.closeModal('modal-delete-project')">Cancel</button>
+          <button class="btn-danger" onclick="App.confirmDeleteProject()">Yes, Delete Project</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 3: Add Contractor / Group -->
+    <div id="modal-add-contractor" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3>+ Add Contractor / Group</h3>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-add-contractor')">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="new-contractor-name">Contractor / Group Name *</label>
+            <input type="text" id="new-contractor-name" class="form-control" placeholder="e.g. Rahim, Selim, Karim" />
+          </div>
+          <div class="form-group">
+            <label for="new-contractor-worktype">Work Type Dropdown *</label>
+            <select id="new-contractor-worktype" class="form-control">
+              <option value="Mason + Helper">Mason + Helper</option>
+              <option value="Painter + Helper">Painter + Helper</option>
+              <option value="Tiles Mason + Helper">Tiles Mason + Helper</option>
+              <option value="Electrician + Helper">Electrician + Helper</option>
+              <option value="Plumber + Helper">Plumber + Helper</option>
+              <option value="Other + Helper">Other + Helper</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="App.closeModal('modal-add-contractor')">Cancel</button>
+          <button class="btn-primary" onclick="App.createNewContractor()">Save Contractor</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 4: Add Employee / Worker -->
+    <div id="modal-add-labor" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3>+ Add Employee / Worker</h3>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-add-labor')">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="new-labor-name">Employee Name *</label>
+            <input type="text" id="new-labor-name" class="form-control" placeholder="e.g. Abdul, Hasan, Rony" />
+          </div>
+          <div class="form-group">
+            <label for="new-labor-phone">Phone Number (Optional)</label>
+            <input type="tel" id="new-labor-phone" class="form-control" placeholder="Optional — leave empty if none" />
+            <span class="field-hint">Phone number is optional and will never appear in reports or exports.</span>
+          </div>
+          <div class="form-group">
+            <label for="new-labor-contractor">Contractor / Group *</label>
+            <select id="new-labor-contractor" class="form-control" onchange="App.handleNewLaborContractorChange()">
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="new-labor-type">Employee Type *</label>
+            <select id="new-labor-type" class="form-control">
+              <option value="Mason">Mason</option>
+              <option value="Helper">Helper</option>
+              <option value="Painter">Painter</option>
+              <option value="Tiles Mason">Tiles Mason</option>
+              <option value="Electrician">Electrician</option>
+              <option value="Plumber">Plumber</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="new-labor-worktype">Work Type *</label>
+            <input type="text" id="new-labor-worktype" class="form-control" readonly />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="App.closeModal('modal-add-labor')">Cancel</button>
+          <button class="btn-primary" onclick="App.createNewEmployee()">Save Employee</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 5: Edit Employee / Worker -->
+    <div id="modal-edit-labor" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3>Edit Employee / Worker</h3>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-edit-labor')">✕</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="edit-labor-id" />
+          <div class="form-group">
+            <label for="edit-labor-name">Employee Name *</label>
+            <input type="text" id="edit-labor-name" class="form-control" />
+          </div>
+          <div class="form-group">
+            <label for="edit-labor-phone">Phone Number (Optional)</label>
+            <input type="tel" id="edit-labor-phone" class="form-control" placeholder="Optional — leave empty if none" />
+            <span class="field-hint">Optional — will never appear in reports or exports.</span>
+          </div>
+          <div class="form-group">
+            <label for="edit-labor-contractor">Contractor / Group *</label>
+            <select id="edit-labor-contractor" class="form-control" onchange="App.handleEditLaborContractorChange()">
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="edit-labor-type">Employee Type *</label>
+            <select id="edit-labor-type" class="form-control">
+              <option value="Mason">Mason</option>
+              <option value="Helper">Helper</option>
+              <option value="Painter">Painter</option>
+              <option value="Tiles Mason">Tiles Mason</option>
+              <option value="Electrician">Electrician</option>
+              <option value="Plumber">Plumber</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="edit-labor-worktype">Work Type *</label>
+            <input type="text" id="edit-labor-worktype" class="form-control" readonly />
+          </div>
+          <div class="form-group">
+            <label for="edit-labor-active">Status *</label>
+            <select id="edit-labor-active" class="form-control">
+              <option value="true">Active</option>
+              <option value="false">Inactive / Archived</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="App.closeModal('modal-edit-labor')">Cancel</button>
+          <button class="btn-primary" onclick="App.saveEditEmployee()">Save Changes</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 6: Delete Employee Confirmation (Safe Archive) -->
+    <div id="modal-delete-labor" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="text-danger">Delete Employee</h3>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-delete-labor')">✕</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="delete-labor-id" />
+          <div class="warning-callout">
+            <strong>Safe Deletion & Attendance Preservation</strong>
+          </div>
+          <p class="modal-desc">
+            Are you sure you want to delete <strong id="delete-labor-name">Employee</strong>?
+          </p>
+          <ul class="modal-check-list">
+            <li>✓ Historical attendance records will remain 100% intact.</li>
+            <li>✓ Past working hours & person-days in reports remain unchanged.</li>
+            <li>✓ The employee will be archived as Inactive.</li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="App.closeModal('modal-delete-labor')">Cancel</button>
+          <button class="btn-danger" onclick="App.confirmDeleteEmployee()">Delete Employee</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 7: Close Month Confirmation -->
+    <div id="modal-close-month" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="text-danger">Archive & Close Month</h3>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-close-month')">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="warning-callout">
+            <strong>Are you sure you want to close this month?</strong>
+          </div>
+          <p class="modal-desc">
+            All daily attendance records, Time In, Time Out, Working Hours, weekly reports, contractor reports, and individual history for <strong id="close-month-label">September 2026</strong> will be archived in <strong>Project History</strong>.
+          </p>
+          <ul class="modal-check-list">
+            <li>✓ Old attendance & time records will NOT be deleted.</li>
+            <li>✓ A fresh new attendance month will begin.</li>
+            <li>✓ Contractors and employees remain active for the new month.</li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="App.closeModal('modal-close-month')">Cancel</button>
+          <button class="btn-danger" onclick="App.confirmCloseMonth()">Close Month</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 8: Currently Working Employees -->
+    <div id="modal-currently-working" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <div class="modal-title-with-badge">
+            <h3>⏱️ Currently Working</h3>
+            <span class="badge-sky" id="cw-modal-count">0 on site</span>
+          </div>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-currently-working')">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-sub">Employees who have clocked Time In today without a Time Out yet.</p>
+          <div id="currently-working-list" class="cw-list-container">
+            <!-- Dynamic list -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="App.closeModal('modal-currently-working')">Close</button>
+          <button class="btn-primary" onclick="App.closeModal('modal-currently-working'); App.navigateTo('attendance')">Go to Attendance</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 9: Excel Export Options -->
+    <div id="modal-excel-export" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3>📊 Export to Excel</h3>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-excel-export')">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-sub">Generate a multi-sheet Excel workbook containing Summary, Daily Attendance, Contractor Summary, and Individual Summary without phone numbers.</p>
+          
+          <div class="export-options-grid">
+            <button class="export-opt-card" onclick="App.exportExcelForType('week')">
+              <span class="export-opt-icon">📅</span>
+              <strong>Current Week Report</strong>
+              <span>Friday → Thursday records</span>
+            </button>
+
+            <button class="export-opt-card" onclick="App.exportExcelForType('month')">
+              <span class="export-opt-icon">📋</span>
+              <strong>Current Month Report</strong>
+              <span>Full active month attendance</span>
+            </button>
+
+            <button class="export-opt-card" onclick="App.exportExcelForType('contractor')">
+              <span class="export-opt-icon">👷</span>
+              <strong>Contractor-wise Report</strong>
+              <span>Trade breakdowns & shifts</span>
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="App.closeModal('modal-excel-export')">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 10: Confirm Present to Absent Clearing -->
+    <div id="modal-confirm-absent" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="text-danger">Change to Absent</h3>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-confirm-absent')">✕</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="pending-absent-worker-id" />
+          <p class="modal-desc">
+            Marking this employee as <strong>Absent</strong> will clear their <strong>Time In</strong>, <strong>Time Out</strong>, and set working minutes to <strong>0</strong>.
+          </p>
+          <p class="modal-sub text-danger">Do you want to proceed?</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="App.closeModal('modal-confirm-absent')">Cancel</button>
+          <button class="btn-danger" onclick="App.confirmAbsentChange()">Yes, Set Absent</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 11: Google Sheets Integration -->
+    <div id="modal-google-sheets" class="modal-backdrop hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3>📈 Google Sheets Integration</h3>
+          <button class="modal-close-btn" onclick="App.closeModal('modal-google-sheets')">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-sub">Sync attendance data to your Google Sheets via Google Apps Script Web App without exposing worker phone numbers.</p>
+          
+          <div class="form-group" style="margin-top: 12px;">
+            <label for="google-sheets-script-url">Google Apps Script Web App URL:</label>
+            <input type="url" id="google-sheets-script-url" class="form-control" placeholder="https://script.google.com/macros/s/.../exec" />
+            <small style="color: var(--slate-500); font-size: 11px; display: block; margin-top: 4px;">
+              Paste the deployed Google Apps Script Web App endpoint URL.
+            </small>
+          </div>
+
+          <div style="margin-top: 14px; display: flex; gap: 8px;">
+            <button class="btn-primary flex-1" onclick="App.saveGoogleSheetsUrl()">
+              <span>💾 Save URL</span>
+            </button>
+            <button class="btn-secondary flex-1" onclick="App.syncWithGoogleSheets()">
+              <span>🔄 Sync Now</span>
+            </button>
+          </div>
+
+          <div id="google-sheets-status" style="margin-top: 12px; font-size: 12px; font-weight: 600; padding: 8px; border-radius: 6px; display: none;"></div>
+
+          <div style="margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+            <label style="font-size: 12px; font-weight: 700; color: var(--slate-700);">Apps Script Template (doPost):</label>
+            <textarea readonly style="width: 100%; height: 110px; font-size: 11px; font-family: monospace; padding: 8px; margin-top: 4px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--slate-100); color: var(--slate-800); resize: none;">function doPost(e) {
+  var data = JSON.parse(e.postData.contents);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Attendance") || ss.insertSheet("Attendance");
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["Project", "Date", "Contractor", "Worker", "Type", "Status", "Time In", "Time Out", "Hours"]);
+  }
+  data.records.forEach(function(r) {
+    sheet.appendRow([data.projectName, r.date, r.contractorName, r.employeeName, r.employeeType, r.status, r.timeIn, r.timeOut, r.working]);
+  });
+  return ContentService.createTextOutput(JSON.stringify({ status: "success", count: data.records.length })).setMimeType(ContentService.MimeType.JSON);
+}</textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="App.closeModal('modal-google-sheets')">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dedicated Dynamic Print Container for A4 Printing -->
+    <div id="printReport"></div>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
