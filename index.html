@@ -25,6 +25,9 @@
           </div>
         </div>
         <div class="header-actions">
+          <button id="btn-refresh-app" class="btn-refresh-header" title="Refresh Current View & Data" onclick="App.refreshData()">
+            ↻ Refresh
+          </button>
           <button id="btn-quick-search" class="icon-btn" title="Search Employee or Contractor" aria-label="Search">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           </button>
@@ -72,9 +75,9 @@
               <span class="hero-tag">Active Construction Project</span>
               <h2 id="dash-project-name" class="hero-project-title">Jamila Bhavan-1</h2>
             </div>
-            <div class="hero-date-badge">
+            <div class="hero-date-badge" onclick="App.navigateTo('attendance')" title="Tap to mark or edit attendance" style="cursor: pointer;">
               <span id="dash-today-date" class="date-text">19 Sep 2026</span>
-              <span class="day-text">Today</span>
+              <span class="day-text">Daily Log ➔</span>
             </div>
           </div>
           <div class="hero-week-banner">
@@ -97,21 +100,21 @@
             </div>
           </div>
 
-          <div class="stat-card stat-present">
+          <div class="stat-card stat-present" onclick="App.navigateTo('attendance')" title="Tap to update attendance">
             <div class="stat-icon-wrapper">✓</div>
             <div class="stat-body">
               <span class="stat-label">Present Today</span>
               <span id="stat-present-today" class="stat-value text-green">0</span>
-              <span class="stat-sub">On site</span>
+              <span class="stat-sub">Manage ➔</span>
             </div>
           </div>
 
-          <div class="stat-card stat-absent">
-            <div class="stat-icon-wrapper">A</div>
+          <div class="stat-card stat-absent" onclick="App.navigateTo('attendance')" title="Tap to update attendance">
+            <div class="stat-icon-wrapper">✕</div>
             <div class="stat-body">
               <span class="stat-label">Absent Today</span>
               <span id="stat-absent-today" class="stat-value text-rose">0</span>
-              <span class="stat-sub">Not on site</span>
+              <span class="stat-sub">Manage ➔</span>
             </div>
           </div>
 
@@ -1081,38 +1084,61 @@
       </div>
     </div>
 
-    <!-- Modal 9: Excel Export Options -->
+    <!-- Modal 9: Export & Share Options -->
     <div id="modal-excel-export" class="modal-backdrop hidden">
       <div class="modal-dialog">
         <div class="modal-header">
-          <h3>📊 Export to Excel</h3>
+          <h3>📊 Export & Share Report</h3>
           <button class="modal-close-btn" onclick="App.closeModal('modal-excel-export')">✕</button>
         </div>
         <div class="modal-body">
-          <p class="modal-sub">Generate a multi-sheet Excel workbook containing Summary, Daily Attendance, Contractor Summary, and Individual Summary without phone numbers.</p>
+          <p class="modal-sub">Choose a report range and the easiest format for your mobile phone or PC.</p>
           
+          <div class="export-section-title">Select Range</div>
+          <div class="export-pill-toggle">
+            <button id="export-range-week" class="export-pill-btn active" onclick="App.setExportRange('week')">📅 This Week</button>
+            <button id="export-range-month" class="export-pill-btn" onclick="App.setExportRange('month')">📋 This Month</button>
+            <button id="export-range-contractor" class="export-pill-btn" onclick="App.setExportRange('contractor')">👷 Contractor</button>
+          </div>
+
+          <div class="export-section-title">📱 Mobile Sharing (Fastest)</div>
           <div class="export-options-grid">
-            <button class="export-opt-card" onclick="App.exportExcelForType('week')">
-              <span class="export-opt-icon">📅</span>
-              <strong>Current Week Report</strong>
-              <span>Friday → Thursday records</span>
+            <button class="export-opt-card highlight-green" onclick="App.shareAttendanceDirect()">
+              <span class="export-opt-icon">📤</span>
+              <strong>Share via WhatsApp / Apps</strong>
+              <span>Send attendance file directly to WhatsApp, Drive, or Email</span>
             </button>
 
-            <button class="export-opt-card" onclick="App.exportExcelForType('month')">
+            <button class="export-opt-card highlight-blue" onclick="App.copyAttendanceData()">
               <span class="export-opt-icon">📋</span>
-              <strong>Current Month Report</strong>
-              <span>Full active month attendance</span>
+              <strong>Copy Data to Clipboard</strong>
+              <span>Copy table to paste directly into Google Sheets or Excel app on your phone</span>
             </button>
 
-            <button class="export-opt-card" onclick="App.exportExcelForType('contractor')">
-              <span class="export-opt-icon">👷</span>
-              <strong>Contractor-wise Report</strong>
-              <span>Trade breakdowns & shifts</span>
+            <button class="export-opt-card" onclick="App.printReportDirect()">
+              <span class="export-opt-icon">🖨️</span>
+              <strong>Save as PDF / Print A4</strong>
+              <span>Opens Android print sheet — tap "Save as PDF" to save to phone</span>
+            </button>
+          </div>
+
+          <div class="export-section-title">💾 File Downloads</div>
+          <div class="export-options-grid">
+            <button class="export-opt-card" onclick="App.downloadCsvDirect()">
+              <span class="export-opt-icon">📄</span>
+              <strong>Download CSV (.csv)</strong>
+              <span>Universal format that opens in any mobile spreadsheet app</span>
+            </button>
+
+            <button class="export-opt-card" onclick="App.downloadExcelDirect()">
+              <span class="export-opt-icon">📊</span>
+              <strong>Download Excel (.xlsx)</strong>
+              <span>Multi-sheet workbook (Summary, Daily, Contractor, Individual)</span>
             </button>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" onclick="App.closeModal('modal-excel-export')">Cancel</button>
+          <button class="btn-secondary" onclick="App.closeModal('modal-excel-export')">Close</button>
         </div>
       </div>
     </div>
