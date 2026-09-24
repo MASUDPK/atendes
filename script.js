@@ -1,4 +1,3 @@
-
 /**
  * ==================================================
  * MULTI-PROJECT CONSTRUCTION LABOR ATTENDANCE & TIME TRACKING SYSTEM
@@ -882,9 +881,9 @@ const IndividualProfileService = {
 // START: 11. EXCEL EXPORT
 // ==================================================
 const ExcelExportService = {
-  exportReport(project, type, weekInfo) {
+  exportReport(project, type, weekInfo, method = 'excel') {
     const projName = project.name;
-    const dateRangeStr = type === 'week' ? weekInfo.formattedRange : project.activeMonth;
+    const dateRangeStr = type === 'week' ? weekInfo.formattedRange : (type === 'contractor' ? 'Contractor Breakdown' : project.activeMonth);
 
     // 1. Sheet 1 — Summary
     let totalEmployees = 0;
@@ -982,7 +981,78 @@ const ExcelExportService = {
       ]);
     });
 
-    // Use SheetJS (XLSX) if available
+    // Generate CSV and TSV content
+    let csv = `"PROJECT","${projName}"\n"PERIOD","${dateRangeStr}"\n"CLASSIFICATION","Attendance & Time Tracking Only (Strictly No Financials)"\n\n`;
+    csv += `"Total Employees","${totalEmployees}"\n"Present Person-Days","${presentPersonDays}"\n"Absent Days","${absentDays}"\n"Total Working Hours","${TimeService.formatMinutesToShort(totalMinutes)}"\n\n`;
+    csv += `"Date","Day","Contractor","Employee Name","Type","Status","Time In","Time Out","Working Hours","Person-Day"\n`;
+    dailyRows.forEach(r => {
+      const pDay = r.status === 'Present' ? 1 : 0;
+      csv += `"${r.date}","${r.day}","${(r.contractorName||'').replace(/"/g, '""')}","${(r.employeeName||'').replace(/"/g, '""')}","${r.employeeType||''}","${r.status}","${r.timeIn||''}","${r.timeOut||''}","${r.working||'0h 00m'}","${pDay}"\n`;
+    });
+
+    let tsv = `Date\tDay\tContractor\tEmployee Name\tType\tStatus\tTime In\tTime Out\tWorking Hours\tPerson-Day\n`;
+    dailyRows.forEach(r => {
+      const pDay = r.status === 'Present' ? 1 : 0;
+      tsv += `${r.date}\t${r.day}\t${r.contractorName||''}\t${r.employeeName||''}\t${r.employeeType||''}\t${r.status}\t${r.timeIn||''}\t${r.timeOut||''}\t${r.working||'0h 00m'}\t${pDay}\n`;
+    });
+
+    const baseFileName = `${projName.replace(/\s+/g, '_')}_${type.toUpperCase()}_Attendance`;
+
+    // 1. Copy to Clipboard
+    if (method === 'copy') {
+      if (window.Android && typeof window.Android.copyToClipboard === 'function') {
+        window.Android.copyToClipboard(tsv, "Attendance Data");
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(tsv).then(() => {
+          App.showToast("✓ Copied to clipboard! Paste into Google Sheets or Excel on mobile.");
+        }).catch(() => {
+          this.copyViaTextarea(tsv);
+        });
+      } else {
+        this.copyViaTextarea(tsv);
+      }
+      return;
+    }
+
+    // 2. Share directly (WhatsApp, Gmail, Google Drive, Files)
+    if (method === 'share') {
+      const csvFileName = `${baseFileName}.csv`;
+      if (window.Android && typeof window.Android.shareCsv === 'function') {
+        window.Android.shareCsv(csvFileName, csv);
+        return;
+      }
+      if (navigator.share) {
+        try {
+          const file = new File([new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8' })], csvFileName, { type: 'text/csv' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            navigator.share({ title: csvFileName, files: [file] }).catch(() => {});
+            return;
+          }
+        } catch (e) {
+          console.warn('File share fallback', e);
+        }
+        navigator.share({
+          title: `${projName} Attendance`,
+          text: `Attendance Report for ${projName} (${dateRangeStr})\nTotal Workers: ${totalEmployees}\nPresent Person-Days: ${presentPersonDays}\nWorking Hours: ${TimeService.formatMinutesToShort(totalMinutes)}`
+        }).catch(() => {});
+        return;
+      }
+      this.downloadCsv(csvFileName, csv);
+      return;
+    }
+
+    // 3. Download CSV
+    if (method === 'csv') {
+      const csvFileName = `${baseFileName}.csv`;
+      if (window.Android && typeof window.Android.shareCsv === 'function') {
+        window.Android.shareCsv(csvFileName, csv);
+      } else {
+        this.downloadCsv(csvFileName, csv);
+      }
+      return;
+    }
+
+    // 4. Download Excel (.xlsx / .xls)
     if (window.XLSX) {
       try {
         const wb = XLSX.utils.book_new();
@@ -996,7 +1066,14 @@ const ExcelExportService = {
         XLSX.utils.book_append_sheet(wb, wsContractor, "Contractor Summary");
         XLSX.utils.book_append_sheet(wb, wsIndividual, "Individual Summary");
 
-        const fileName = `${projName.replace(/\s+/g, '_')}_${type.toUpperCase()}_Attendance.xlsx`;
+        const fileName = `${baseFileName}.xlsx`;
+
+        if (window.Android && typeof window.Android.shareBase64File === 'function') {
+          const b64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+          window.Android.shareBase64File(fileName, b64, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+          return;
+        }
+
         XLSX.writeFile(wb, fileName);
         return;
       } catch (err) {
@@ -1032,15 +1109,50 @@ const ExcelExportService = {
  ${makeSheetXml("Individual Summary", individualData)}
 </Workbook>`;
 
+    const fileName = `${baseFileName}.xls`;
+    if (window.Android && typeof window.Android.shareBase64File === 'function') {
+      const b64 = btoa(unescape(encodeURIComponent(xml)));
+      window.Android.shareBase64File(fileName, b64, 'application/vnd.ms-excel');
+      return;
+    }
+
     const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${projName.replace(/\s+/g, '_')}_${type.toUpperCase()}_Attendance.xls`;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  },
+
+  downloadCsv(fileName, content) {
+    const blob = new Blob(["\uFEFF" + content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  copyViaTextarea(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      App.showToast("✓ Copied to clipboard! Paste into Google Sheets or Excel on mobile.");
+    } catch (e) {
+      alert("Please use the Share or Download option.");
+    }
+    document.body.removeChild(ta);
   }
 };
 // ==================================================
@@ -1185,7 +1297,15 @@ const A4PrintService = {
     }
 
     printContainer.innerHTML = html;
-    window.print();
+    document.body.classList.add('printing-report');
+    if (window.Android && typeof window.Android.printDocument === 'function') {
+      window.Android.printDocument(`${projName}_${viewName || 'Report'}`);
+    } else {
+      window.print();
+    }
+    setTimeout(() => {
+      document.body.classList.remove('printing-report');
+    }, 2500);
   }
 };
 
@@ -1360,11 +1480,33 @@ const App = {
 
   init() {
     this.projects = StorageService.getProjects();
-    if (this.projects.length > 0) {
+    
+    // Requirement 1: Last used project must stay active
+    const savedProjectId = localStorage.getItem('lastSelectedProjectId');
+    if (savedProjectId && this.projects.some(p => p.id === savedProjectId)) {
+      this.currentProjectId = savedProjectId;
+    } else if (this.projects.length > 0) {
       this.currentProjectId = this.projects[0].id;
+      localStorage.setItem('lastSelectedProjectId', this.currentProjectId);
     } else {
       const p = ProjectService.createProject(this.projects, 'Jamila Bhavan-1');
       this.currentProjectId = p.id;
+      localStorage.setItem('lastSelectedProjectId', this.currentProjectId);
+    }
+
+    // Requirement 2: Weekly date must stay
+    const savedWeek = localStorage.getItem('selectedWeekStartDate');
+    if (savedWeek) {
+      this.selectedWeekFriday = savedWeek;
+    } else {
+      this.selectedWeekFriday = '2026-09-18';
+      localStorage.setItem('selectedWeekStartDate', this.selectedWeekFriday);
+    }
+
+    // Active attendance date persistence
+    const savedDate = localStorage.getItem('activeAttendanceDate');
+    if (savedDate) {
+      this.todayDate = savedDate;
     }
 
     this.bindEvents();
@@ -1376,11 +1518,35 @@ const App = {
     return this.projects.find(p => p.id === this.currentProjectId) || this.projects[0];
   },
 
+  // Requirement 7: Clearly visible Refresh button logic
+  refreshData() {
+    this.projects = StorageService.getProjects();
+    const savedProjectId = localStorage.getItem('lastSelectedProjectId');
+    if (savedProjectId && this.projects.some(p => p.id === savedProjectId)) {
+      this.currentProjectId = savedProjectId;
+    } else if (this.projects.length > 0 && !this.projects.some(p => p.id === this.currentProjectId)) {
+      this.currentProjectId = this.projects[0].id;
+      localStorage.setItem('lastSelectedProjectId', this.currentProjectId);
+    }
+    const savedWeek = localStorage.getItem('selectedWeekStartDate');
+    if (savedWeek) {
+      this.selectedWeekFriday = savedWeek;
+    }
+    const savedDate = localStorage.getItem('activeAttendanceDate');
+    if (savedDate) {
+      this.todayDate = savedDate;
+    }
+    this.renderProjectDropdown();
+    this.renderCurrentView();
+    this.showToast('↻ View & data refreshed!');
+  },
+
   bindEvents() {
     const pSelect = document.getElementById('project-select');
     if (pSelect) {
       pSelect.addEventListener('change', (e) => {
         this.currentProjectId = e.target.value;
+        localStorage.setItem('lastSelectedProjectId', this.currentProjectId);
         this.renderCurrentView();
       });
     }
@@ -1587,14 +1753,19 @@ const App = {
     if (!proj) return;
 
     const dateInput = document.getElementById('att-date-input');
-    if (!dateInput.value) dateInput.value = this.todayDate;
+    if (dateInput) {
+      dateInput.value = this.todayDate;
+    }
 
     const conSelect = document.getElementById('att-contractor-select');
     const contractors = proj.contractors || [];
+    const allEmps = EmployeeService.getEmployees(proj, 'ALL', false);
 
-    conSelect.innerHTML = contractors.map(c => `
+    let conOptions = `<option value="ALL">All Contractors & Workers (${allEmps.length})</option>`;
+    conOptions += contractors.map(c => `
       <option value="${c.id}">${c.name} (${c.workType})</option>
     `).join('');
+    conSelect.innerHTML = conOptions;
 
     this.handleAttendanceDateOrContractorChange();
   },
@@ -1603,14 +1774,22 @@ const App = {
     const proj = this.getCurrentProject();
     if (!proj) return;
 
-    const dateStr = document.getElementById('att-date-input').value;
+    const dateInput = document.getElementById('att-date-input');
+    const dateStr = dateInput ? dateInput.value : this.todayDate;
+    if (dateStr) {
+      this.todayDate = dateStr;
+      localStorage.setItem('activeAttendanceDate', dateStr);
+    }
+
     const contractorId = document.getElementById('att-contractor-select').value;
     const con = (proj.contractors || []).find(c => c.id === contractorId);
 
     const workTypeEl = document.getElementById('att-contractor-worktype');
     const countBadge = document.getElementById('att-labor-count-badge');
 
-    if (con) {
+    if (contractorId === 'ALL') {
+      workTypeEl.textContent = 'All Trades';
+    } else if (con) {
       workTypeEl.textContent = con.workType;
     } else {
       workTypeEl.textContent = 'None';
@@ -1623,7 +1802,7 @@ const App = {
     if (employees.length === 0) {
       wrapper.innerHTML = `
         <div class="empty-state">
-          <p>No active employees under this contractor yet.</p>
+          <p>No active employees found.</p>
           <button class="btn-primary-sm" onclick="App.showAddEmployeeModal()">+ Add Employee</button>
         </div>
       `;
@@ -1641,31 +1820,36 @@ const App = {
       const timeOut = rec && isPresent ? (rec.timeOut || '') : '';
 
       const calc = TimeService.validateAndCalculate(timeIn, timeOut);
+      const conObj = (proj.contractors || []).find(c => c.id === emp.contractorId);
+      const conName = conObj ? conObj.name : (con ? con.name : '—');
 
       rowsHtml += `
-        <div class="attendance-card ${isAbsent ? 'absent-mode' : ''}" id="att-card-${emp.id}" data-employee-id="${emp.id}">
+        <div class="attendance-card ${isAbsent ? 'absent-mode' : ''}" id="att-card-${emp.id}" data-employee-id="${emp.id}" data-contractor-id="${emp.contractorId}">
           <div class="card-labor-header">
             <div class="labor-name-group">
               <strong class="labor-name">${emp.name}</strong>
-              <span class="labor-type-badge">${emp.type}</span>
+              <div class="worker-meta-line">
+                <span class="labor-type-badge">${emp.type}</span>
+                <span class="worker-contractor-label">Contractor: <strong>${conName}</strong></span>
+              </div>
             </div>
             <div class="status-toggle-buttons">
               <button type="button" class="btn-status btn-status-present ${isPresent && !isAbsent ? 'active' : ''}"
                 onclick="App.setRowStatus('${emp.id}', 'Present')">✓ Present</button>
               <button type="button" class="btn-status btn-status-absent ${isAbsent ? 'active' : ''}"
-                onclick="App.setRowStatus('${emp.id}', 'Absent')">A Absent</button>
+                onclick="App.setRowStatus('${emp.id}', 'Absent')">✕ Absent</button>
             </div>
           </div>
 
           <div class="card-time-row ${isAbsent ? 'hidden' : ''}" id="time-controls-${emp.id}">
             <div class="time-input-wrap">
-              <label>Time In:</label>
+              <label>Time In</label>
               <input type="time" class="time-input" id="time-in-${emp.id}" value="${timeIn}"
                 onchange="App.handleTimeInputChange('${emp.id}')" />
             </div>
 
             <div class="time-input-wrap">
-              <label>Time Out:</label>
+              <label>Time Out</label>
               <input type="time" class="time-input" id="time-out-${emp.id}" value="${timeOut}"
                 onchange="App.handleTimeInputChange('${emp.id}')" />
             </div>
@@ -1685,10 +1869,14 @@ const App = {
     this.updateAttendanceSummaryCounts();
   },
 
-  handleTimeInputChange(employeeId) {
-    const timeIn = document.getElementById(`time-in-${employeeId}`).value;
-    const timeOut = document.getElementById(`time-out-${employeeId}`).value;
+  handleTimeInputChange(employeeId, triggerAutoSave = true) {
+    const timeInInput = document.getElementById(`time-in-${employeeId}`);
+    const timeOutInput = document.getElementById(`time-out-${employeeId}`);
     const calcEl = document.getElementById(`calc-val-${employeeId}`);
+    if (!timeInInput || !timeOutInput || !calcEl) return;
+
+    const timeIn = timeInInput.value;
+    const timeOut = timeOutInput.value;
 
     const res = TimeService.validateAndCalculate(timeIn, timeOut);
     calcEl.textContent = res.label;
@@ -1700,86 +1888,71 @@ const App = {
     } else {
       calcEl.className = 'calc-value font-bold text-slate';
     }
+
+    if (triggerAutoSave) {
+      this.autoSaveAttendance();
+    }
   },
 
   setRowStatus(employeeId, newStatus) {
     const card = document.getElementById(`att-card-${employeeId}`);
+    if (!card) return;
     const btnPres = card.querySelector('.btn-status-present');
     const btnAbs = card.querySelector('.btn-status-absent');
     const timeControls = document.getElementById(`time-controls-${employeeId}`);
-    const timeInInput = document.getElementById(`time-in-${employeeId}`);
-    const timeOutInput = document.getElementById(`time-out-${employeeId}`);
+    const calcEl = document.getElementById(`calc-val-${employeeId}`);
 
     if (newStatus === 'Absent') {
-      // If employee had time entered, prompt confirmation
-      if (timeInInput.value || timeOutInput.value) {
-        this.pendingAbsentWorkerId = employeeId;
-        this.openModal('modal-confirm-absent');
-        return;
-      }
-      btnPres.classList.remove('active');
-      btnAbs.classList.add('active');
+      if (btnPres) btnPres.classList.remove('active');
+      if (btnAbs) btnAbs.classList.add('active');
       card.classList.add('absent-mode');
-      timeControls.classList.add('hidden');
-      timeInInput.value = '';
-      timeOutInput.value = '';
-      document.getElementById(`calc-val-${employeeId}`).textContent = '—';
+      if (timeControls) timeControls.classList.add('hidden');
+      if (calcEl) calcEl.textContent = '—';
     } else {
-      btnPres.classList.add('active');
-      btnAbs.classList.remove('active');
+      if (btnPres) btnPres.classList.add('active');
+      if (btnAbs) btnAbs.classList.remove('active');
       card.classList.remove('absent-mode');
-      timeControls.classList.remove('hidden');
-      this.handleTimeInputChange(employeeId);
+      if (timeControls) timeControls.classList.remove('hidden');
+      this.handleTimeInputChange(employeeId, false);
     }
 
     this.updateAttendanceSummaryCounts();
+    this.autoSaveAttendance();
   },
 
   confirmAbsentChange() {
     if (!this.pendingAbsentWorkerId) return;
     const id = this.pendingAbsentWorkerId;
-    const card = document.getElementById(`att-card-${id}`);
-    if (card) {
-      const btnPres = card.querySelector('.btn-status-present');
-      const btnAbs = card.querySelector('.btn-status-absent');
-      const timeControls = document.getElementById(`time-controls-${id}`);
-      const timeInInput = document.getElementById(`time-in-${id}`);
-      const timeOutInput = document.getElementById(`time-out-${id}`);
-
-      btnPres.classList.remove('active');
-      btnAbs.classList.add('active');
-      card.classList.add('absent-mode');
-      timeControls.classList.add('hidden');
-      timeInInput.value = '';
-      timeOutInput.value = '';
-      document.getElementById(`calc-val-${id}`).textContent = '—';
-    }
+    this.setRowStatus(id, 'Absent');
     this.closeModal('modal-confirm-absent');
     this.pendingAbsentWorkerId = null;
-    this.updateAttendanceSummaryCounts();
   },
 
   markAllAttendance(targetStatus) {
     const cards = document.querySelectorAll('.attendance-card');
     cards.forEach(card => {
       const id = card.getAttribute('data-employee-id');
+      const btnPres = card.querySelector('.btn-status-present');
+      const btnAbs = card.querySelector('.btn-status-absent');
+      const timeControls = document.getElementById(`time-controls-${id}`);
+      const calcEl = document.getElementById(`calc-val-${id}`);
+
       if (targetStatus === 'present') {
-        this.setRowStatus(id, 'Present');
+        if (btnPres) btnPres.classList.add('active');
+        if (btnAbs) btnAbs.classList.remove('active');
+        card.classList.remove('absent-mode');
+        if (timeControls) timeControls.classList.remove('hidden');
+        this.handleTimeInputChange(id, false);
       } else {
-        const timeInInput = document.getElementById(`time-in-${id}`);
-        const timeOutInput = document.getElementById(`time-out-${id}`);
-        timeInInput.value = '';
-        timeOutInput.value = '';
-        const btnPres = card.querySelector('.btn-status-present');
-        const btnAbs = card.querySelector('.btn-status-absent');
-        btnPres.classList.remove('active');
-        btnAbs.classList.add('active');
+        if (btnPres) btnPres.classList.remove('active');
+        if (btnAbs) btnAbs.classList.add('active');
         card.classList.add('absent-mode');
-        document.getElementById(`time-controls-${id}`).classList.add('hidden');
-        document.getElementById(`calc-val-${id}`).textContent = '—';
+        if (timeControls) timeControls.classList.add('hidden');
+        if (calcEl) calcEl.textContent = '—';
       }
     });
     this.updateAttendanceSummaryCounts();
+    this.autoSaveAttendance();
   },
 
   updateAttendanceSummaryCounts() {
@@ -1794,29 +1967,33 @@ const App = {
     if (el) el.textContent = `Present: ${pres} | Absent: ${abs}`;
   },
 
-  saveCurrentAttendance() {
+  autoSaveAttendance() {
     const proj = this.getCurrentProject();
     if (!proj) return;
 
-    const dateStr = document.getElementById('att-date-input').value;
-    const contractorId = document.getElementById('att-contractor-select').value;
-    const cards = document.querySelectorAll('.attendance-card');
+    const dateInput = document.getElementById('att-date-input');
+    const dateStr = dateInput ? dateInput.value : this.todayDate;
+    if (dateStr) {
+      this.todayDate = dateStr;
+      localStorage.setItem('activeAttendanceDate', dateStr);
+    }
 
-    let hasInvalid = false;
+    const cards = document.querySelectorAll('.attendance-card');
     cards.forEach(card => {
       const empId = card.getAttribute('data-employee-id');
       const isPres = card.querySelector('.btn-status-present.active') !== null;
       const status = isPres ? 'Present' : 'Absent';
-      const timeIn = isPres ? document.getElementById(`time-in-${empId}`).value : '';
-      const timeOut = isPres ? document.getElementById(`time-out-${empId}`).value : '';
+      const timeInInput = document.getElementById(`time-in-${empId}`);
+      const timeOutInput = document.getElementById(`time-out-${empId}`);
+      const timeIn = isPres && timeInInput ? timeInInput.value : '';
+      const timeOut = isPres && timeOutInput ? timeOutInput.value : '';
 
       const calc = TimeService.validateAndCalculate(timeIn, timeOut);
-      if (calc.status === 'invalid_order') {
-        hasInvalid = true;
-      }
+      const empObj = EmployeeService.getEmployeeById(proj, empId);
+      const rowContractorId = empObj ? empObj.contractorId : (proj.contractors[0]?.id || '');
 
       AttendanceService.saveRecord(proj, {
-        contractorId,
+        contractorId: rowContractorId,
         employeeId: empId,
         date: dateStr,
         status,
@@ -1826,12 +2003,13 @@ const App = {
       });
     });
 
-    if (hasInvalid) {
-      alert('Note: Some records have Time Out earlier than Time In. Please verify.');
-    }
-
     StorageService.saveProjects(this.projects);
-    this.showToast('Daily attendance saved successfully!');
+    localStorage.setItem('lastSelectedProjectId', this.currentProjectId);
+  },
+
+  saveCurrentAttendance() {
+    this.autoSaveAttendance();
+    this.showToast('✓ Attendance saved successfully!');
   },
 
   // 3. CONTRACTORS / GROUPS
@@ -1966,7 +2144,7 @@ const App = {
     if (!proj) return;
 
     const dateInput = document.getElementById('week-start-date-input');
-    if (!dateInput.value) dateInput.value = this.selectedWeekFriday;
+    if (dateInput) dateInput.value = this.selectedWeekFriday;
 
     const weekInfo = WeeklyReportService.getWeekRangeFromFriday(this.selectedWeekFriday);
     document.getElementById('weekly-range-display').textContent = weekInfo.formattedRange;
@@ -2067,7 +2245,9 @@ const App = {
 
     msg.classList.add('hidden');
     this.selectedWeekFriday = val;
+    localStorage.setItem('selectedWeekStartDate', val);
     this.renderWeeklyView();
+    this.showToast(`Weekly cycle set: ${val}`);
   },
 
   // 6. MONTHLY REPORT
@@ -2343,11 +2523,12 @@ const App = {
     const weekTbody = document.getElementById('lp-week-table-body');
     weekTbody.innerHTML = data.weekRecords.map(r => `
       <tr>
-        <td><strong>${r.date}</strong> (${r.day.substring(0, 3)})</td>
+        <td><strong>${r.date}</strong></td>
+        <td>${r.day}</td>
         <td><span class="status-tag ${r.status === 'Present' ? 'present' : 'absent'}">${r.status}</span></td>
-        <td>${r.timeIn}</td>
-        <td>${r.timeOut}</td>
-        <td><strong>${r.working}</strong></td>
+        <td>${r.timeIn || '—'}</td>
+        <td>${r.timeOut || '—'}</td>
+        <td><strong>${r.working || '0h 00m'}</strong></td>
       </tr>
     `).join('');
 
@@ -2360,15 +2541,16 @@ const App = {
 
     const monthTbody = document.getElementById('lp-month-table-body');
     if (monthSummary.monthRecords.length === 0) {
-      monthTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No records for this month.</td></tr>';
+      monthTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No records for this month.</td></tr>';
     } else {
       monthTbody.innerHTML = monthSummary.monthRecords.map(r => `
         <tr>
-          <td><strong>${r.date}</strong> (${r.day.substring(0, 3)})</td>
+          <td><strong>${r.date}</strong></td>
+          <td>${r.day}</td>
           <td><span class="status-tag ${r.status === 'Present' ? 'present' : 'absent'}">${r.status}</span></td>
-          <td>${r.timeIn}</td>
-          <td>${r.timeOut}</td>
-          <td><strong>${r.working}</strong></td>
+          <td>${r.timeIn || '—'}</td>
+          <td>${r.timeOut || '—'}</td>
+          <td><strong>${r.working || '0h 00m'}</strong></td>
         </tr>
       `).join('');
     }
@@ -2589,8 +2771,10 @@ const App = {
     const p = ProjectService.createProject(this.projects, name);
     if (p) {
       this.currentProjectId = p.id;
+      localStorage.setItem('lastSelectedProjectId', this.currentProjectId);
       input.value = '';
       this.closeModal('modal-add-project');
+      this.renderProjectDropdown();
       this.renderCurrentView();
       this.showToast(`Project "${p.name}" created!`);
     }
@@ -2614,7 +2798,9 @@ const App = {
     const ok = ProjectService.deleteProject(this.projects, proj.id);
     if (ok) {
       this.currentProjectId = this.projects[0].id;
+      localStorage.setItem('lastSelectedProjectId', this.currentProjectId);
       this.closeModal('modal-delete-project');
+      this.renderProjectDropdown();
       this.renderCurrentView();
       this.showToast(`Project "${deletedName}" deleted permanently.`);
     }
@@ -2796,17 +2982,71 @@ const App = {
     }
   },
 
+  selectedExportRange: 'week',
+
+  setExportRange(range) {
+    this.selectedExportRange = range;
+    ['week', 'month', 'contractor'].forEach(r => {
+      const btn = document.getElementById(`export-range-${r}`);
+      if (btn) {
+        if (r === range) btn.classList.add('active');
+        else btn.classList.remove('active');
+      }
+    });
+  },
+
   showExcelExportModal() {
+    this.setExportRange(this.selectedExportRange || 'week');
     this.openModal('modal-excel-export');
+  },
+
+  shareAttendanceDirect() {
+    const proj = this.getCurrentProject();
+    if (!proj) return;
+    const weekInfo = WeeklyReportService.getWeekRangeFromFriday(this.selectedWeekFriday);
+    ExcelExportService.exportReport(proj, this.selectedExportRange, weekInfo, 'share');
+    this.closeModal('modal-excel-export');
+  },
+
+  copyAttendanceData() {
+    const proj = this.getCurrentProject();
+    if (!proj) return;
+    const weekInfo = WeeklyReportService.getWeekRangeFromFriday(this.selectedWeekFriday);
+    ExcelExportService.exportReport(proj, this.selectedExportRange, weekInfo, 'copy');
+    this.closeModal('modal-excel-export');
+  },
+
+  printReportDirect() {
+    this.closeModal('modal-excel-export');
+    const view = this.selectedExportRange === 'month' ? 'monthly-report' : 'weekly-report';
+    this.printReport(view);
+  },
+
+  downloadCsvDirect() {
+    const proj = this.getCurrentProject();
+    if (!proj) return;
+    const weekInfo = WeeklyReportService.getWeekRangeFromFriday(this.selectedWeekFriday);
+    ExcelExportService.exportReport(proj, this.selectedExportRange, weekInfo, 'csv');
+    this.closeModal('modal-excel-export');
+    this.showToast('CSV report ready!');
+  },
+
+  downloadExcelDirect() {
+    const proj = this.getCurrentProject();
+    if (!proj) return;
+    const weekInfo = WeeklyReportService.getWeekRangeFromFriday(this.selectedWeekFriday);
+    ExcelExportService.exportReport(proj, this.selectedExportRange, weekInfo, 'excel');
+    this.closeModal('modal-excel-export');
+    this.showToast('Excel file generated!');
   },
 
   exportExcelForType(type) {
     const proj = this.getCurrentProject();
     if (!proj) return;
     const weekInfo = WeeklyReportService.getWeekRangeFromFriday(this.selectedWeekFriday);
-    ExcelExportService.exportReport(proj, type, weekInfo);
+    ExcelExportService.exportReport(proj, type, weekInfo, 'excel');
     this.closeModal('modal-excel-export');
-    this.showToast('Excel file generated and downloading!');
+    this.showToast('Excel file generated!');
   },
 
   printReport(viewName) {
